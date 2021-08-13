@@ -6,7 +6,8 @@ const mongoose = require("mongoose")
 const session = require('express-session');
 const passport = require("passport")
 const passportLocal = require("passport-local-mongoose")
-
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findorcreate=require("mongoose-findorcreate")
 
 const app = express()
 
@@ -44,7 +45,9 @@ const userSchema = new mongoose.Schema({
 mongoose.set("useCreateIndex");
 
 //set up user schema to use plugin 
-userSchema.plugin(passportLocal)
+userSchema.plugin(passportLocal);
+//add the package as a plugin
+userSchema.plugin(findorcreate);
 
 //encrypt entire databse 
 // userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] })
@@ -54,9 +57,41 @@ passport.use(User.createStrategy());
 passport.serializeUser(User.serializeUser());
 passport.deserializeUser(User.deserializeUser());
 
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRETS,
+    callbackURL: "http://localhost:3000/auth/google/secrets",
+    userProfileURL:"https://www.googleapis.com/oath2/v3/userinfo"
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    //find or create find a user find id, if not existed then it will create a new ont
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
+
 app.get("/", function (req, res) {
     res.render("home")
 })
+
+app.get("/auth/google", function(Req,res){
+    //triggers the pop-up for users to signup with google
+    passport.authenticate("google",{scope:["profile"]})
+
+});
+
+app.get('auth/google/secrets',
+passport.authenticate('google',{failureRedirect:'/login'}),
+function(req,res){
+    //successful authentication -> direct home
+    res.redirect("/secrets")
+}
+);
+
+
+
+
 
 app.get("/login", function (req, res) {
     res.render("login")
@@ -138,7 +173,7 @@ app.post("/register", function(req,res){
 // })
 
 //use authenticate local to authenticate users using username and password
-app.post("login", function (req, res) {
+app.post("/login", function (req, res) {
     const user = new User({
         username: req.body.username,
         password: req.body.password
